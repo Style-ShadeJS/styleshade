@@ -1,0 +1,39 @@
+{
+  "name": "styleshade",
+  "version": "1.0.0",
+  "description": "High-performance web shader system — Vulkan-inspired WebGPU pipeline with Three.js, Babylon.js, and raw WebGPU support.",
+  "type": "module",
+  "main": "./dist/styleshade.cjs.js",
+  "module": "./dist/styleshade.esm.js",
+  "browser": "./dist/styleshade.umd.js",
+  "exports": {
+    ".": {
+      "import": "./dist/styleshade.esm.js",
+      "require": "./dist/styleshade.cjs.js"
+    },
+    "./three": "./dist/adapters/three.esm.js",
+    "./babylon": "./dist/adapters/babylon.esm.js",
+    "./addons/*": "./dist/addons/*.esm.js"
+  },
+  "types": "./dist/types/index.d.ts",
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "serve": "python3 -m http.server 8080 --directory docs",
+    "lint": "eslint src/**/*.js"
+  },
+  "keywords": ["webgpu", "webgl", "shader", "three.js", "babylon.js", "graphics", "rendering", "pbr"],
+  "author": "StyleShade Contributors",
+  "license": "MIT",
+  "peerDependencies": {
+    "three": ">=0.150.0",
+    "@babylonjs/core": ">=6.0.0"
+  },
+  "peerDependenciesOptional": { "three": true, "@babylonjs/core": true },
+  "devDependencies": {
+    "rollup": "^4.0.0",
+    "@rollup/plugin-node-resolve": "^15.0.0",
+    "@rollup/plugin-terser": "^0.4.0"
+  }
+}
