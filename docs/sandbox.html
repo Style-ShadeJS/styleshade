@@ -1,0 +1,1620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StyleShade — Live Shader Sandbox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@300;400;500&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --black:   #020406;
+  --void:    #050810;
+  --panel:   #080c14;
+  --panel2:  #0a0f1c;
+  --border:  #141c2e;
+  --dim:     #1e2a42;
+  --text:    #c8d4e8;
+  --muted:   #4a5a78;
+  --accent:  #00e5ff;
+  --accent2: #7b61ff;
+  --accent3: #ff6b35;
+  --green:   #00ff88;
+  --red:     #ff4466;
+  --white:   #f0f4ff;
+  --font-d:  'Syne', sans-serif;
+  --font-m:  'DM Mono', monospace;
+  --font-u:  'Space Mono', monospace;
+}
+
+html, body { width:100%; height:100%; overflow:hidden; background:var(--black); color:var(--text); font-family:var(--font-u); }
+
+/* ── Layout ── */
+#app {
+  display: grid;
+  grid-template-rows: 52px 1fr;
+  grid-template-columns: 1fr 420px;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ── Top bar ── */
+#topbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: rgba(2,4,6,0.95);
+  border-bottom: 1px solid var(--border);
+  z-index: 10;
+  gap: 16px;
+}
+.topbar-logo {
+  font-family: var(--font-d);
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--white);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.logo-dot { width:7px;height:7px;background:var(--accent);border-radius:50%;box-shadow:0 0 10px var(--accent);animation:pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+
+.topbar-presets {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.preset-btn {
+  padding: 5px 12px;
+  font-family: var(--font-u);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.preset-btn:hover { border-color:var(--accent2); color:var(--accent2); }
+.preset-btn.active { background:rgba(0,229,255,0.1); border-color:var(--accent); color:var(--accent); }
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+#fps-badge {
+  font-family: var(--font-m);
+  font-size: 11px;
+  color: var(--green);
+  background: rgba(0,255,136,0.08);
+  border: 1px solid rgba(0,255,136,0.2);
+  padding: 4px 10px;
+  border-radius: 3px;
+  min-width: 68px;
+  text-align: center;
+}
+#tier-badge {
+  font-family: var(--font-m);
+  font-size: 10px;
+  color: var(--accent2);
+  background: rgba(123,97,255,0.08);
+  border: 1px solid rgba(123,97,255,0.2);
+  padding: 4px 10px;
+  border-radius: 3px;
+}
+
+/* ── Viewport ── */
+#viewport {
+  position: relative;
+  overflow: hidden;
+  background: #000;
+}
+#gl-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* viewport overlay controls */
+.viewport-controls {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  gap: 8px;
+}
+.vc-btn {
+  padding: 6px 12px;
+  font-family: var(--font-u);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: rgba(2,4,6,0.8);
+  border: 1px solid var(--dim);
+  color: var(--muted);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+  backdrop-filter: blur(8px);
+}
+.vc-btn:hover { border-color:var(--accent);color:var(--accent); }
+.vc-btn.on { border-color:var(--accent);color:var(--accent);background:rgba(0,229,255,0.08); }
+
+.viewport-hint {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  font-family: var(--font-m);
+  font-size: 10px;
+  color: var(--muted);
+  background: rgba(2,4,6,0.7);
+  padding: 6px 10px;
+  border-radius: 3px;
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+/* error overlay */
+#error-overlay {
+  display: none;
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  background: rgba(255,40,60,0.12);
+  border-top: 1px solid var(--red);
+  padding: 10px 16px;
+  font-family: var(--font-m);
+  font-size: 11px;
+  color: var(--red);
+  white-space: pre-wrap;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+/* ── Sidebar ── */
+#sidebar {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--panel);
+  overflow: hidden;
+}
+
+/* tabs */
+.side-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.side-tab {
+  flex: 1;
+  padding: 12px 8px;
+  font-family: var(--font-u);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-align: center;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+}
+.side-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+.side-tab:hover:not(.active) { color:var(--text); }
+
+/* tab panels */
+.side-panel { display:none; flex-direction:column; flex:1; overflow:hidden; }
+.side-panel.active { display:flex; }
+
+/* ── SHADER EDITOR ── */
+#editor-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.editor-label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.shader-type-toggle {
+  display: flex;
+  gap: 4px;
+}
+.stt-btn {
+  padding: 3px 10px;
+  font-family: var(--font-u);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.stt-btn.active { background:rgba(123,97,255,0.15);border-color:var(--accent2);color:var(--accent2); }
+
+#shader-editor {
+  flex: 1;
+  background: var(--void);
+  border: none;
+  resize: none;
+  color: var(--text);
+  font-family: var(--font-m);
+  font-size: 12px;
+  line-height: 1.7;
+  padding: 16px;
+  outline: none;
+  overflow-y: auto;
+  tab-size: 2;
+  white-space: pre;
+  overflow-x: auto;
+}
+#shader-editor::selection { background: rgba(0,229,255,0.2); }
+
+.editor-actions {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.run-btn {
+  flex: 1;
+  padding: 9px;
+  font-family: var(--font-u);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  background: var(--accent);
+  color: var(--black);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: box-shadow 0.2s, transform 0.1s;
+}
+.run-btn:hover { box-shadow:0 0 24px rgba(0,229,255,0.4); transform:translateY(-1px); }
+.run-btn:active { transform:translateY(0); }
+.reset-btn {
+  padding: 9px 14px;
+  font-family: var(--font-u);
+  font-size: 11px;
+  background: transparent;
+  border: 1px solid var(--dim);
+  color: var(--muted);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.reset-btn:hover { border-color:var(--accent3);color:var(--accent3); }
+
+/* ── CONTROLS PANEL ── */
+#controls-panel {
+  overflow-y: auto;
+  flex: 1;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ctrl-group {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.ctrl-group-title {
+  padding: 10px 14px;
+  font-family: var(--font-u);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,0.2);
+}
+.ctrl-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(20,28,46,0.5);
+  gap: 10px;
+}
+.ctrl-row:last-child { border-bottom: none; }
+.ctrl-name {
+  font-family: var(--font-m);
+  font-size: 12px;
+  color: var(--text);
+  flex-shrink: 0;
+  min-width: 100px;
+}
+.ctrl-val {
+  font-family: var(--font-m);
+  font-size: 11px;
+  color: var(--accent);
+  min-width: 42px;
+  text-align: right;
+  flex-shrink: 0;
+}
+input[type=range] {
+  flex: 1;
+  -webkit-appearance: none;
+  height: 3px;
+  background: var(--dim);
+  border-radius: 2px;
+  outline: none;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(0,229,255,0.5);
+}
+input[type=color] {
+  -webkit-appearance: none;
+  width: 32px; height: 22px;
+  border: 1px solid var(--dim);
+  border-radius: 3px;
+  background: none;
+  cursor: pointer;
+  padding: 2px;
+}
+.ctrl-toggle {
+  width: 36px; height: 18px;
+  background: var(--dim);
+  border-radius: 9px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+  border: none;
+}
+.ctrl-toggle.on { background: var(--accent); }
+.ctrl-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--white);
+  transition: transform 0.2s;
+}
+.ctrl-toggle.on::after { transform: translateX(18px); }
+
+/* ── STATS PANEL ── */
+#stats-panel {
+  overflow-y: auto;
+  flex: 1;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.stat-card {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+.stat-card-title {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.stat-big {
+  font-family: var(--font-d);
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--white);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.stat-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+.stat-bar-wrap {
+  height: 4px;
+  background: var(--dim);
+  border-radius: 2px;
+  margin-top: 10px;
+  overflow: hidden;
+}
+.stat-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+.pass-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pass-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-m);
+  font-size: 11px;
+}
+.pass-name { color: var(--text); }
+.pass-cost { color: var(--muted); }
+.pass-bar-wrap {
+  flex: 1;
+  height: 3px;
+  background: var(--dim);
+  border-radius: 2px;
+  margin: 0 10px;
+  overflow: hidden;
+}
+.pass-bar { height:100%;border-radius:2px; }
+
+/* scrollbar */
+#controls-panel::-webkit-scrollbar,
+#stats-panel::-webkit-scrollbar,
+#shader-editor::-webkit-scrollbar { width:3px; }
+#controls-panel::-webkit-scrollbar-thumb,
+#stats-panel::-webkit-scrollbar-thumb,
+#shader-editor::-webkit-scrollbar-thumb { background:var(--dim); }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- TOP BAR -->
+  <header id="topbar">
+    <div class="topbar-logo">
+      <div class="logo-dot"></div>
+      StyleShade <span style="color:var(--muted);font-size:12px;font-weight:400;margin-left:4px;">Sandbox</span>
+    </div>
+
+    <div class="topbar-presets">
+      <button class="preset-btn active" data-preset="cinematic">Cinematic</button>
+      <button class="preset-btn" data-preset="neon">Neon Void</button>
+      <button class="preset-btn" data-preset="alien">Alien World</button>
+      <button class="preset-btn" data-preset="wireframe">Wireframe</button>
+      <button class="preset-btn" data-preset="xray">X-Ray</button>
+      <button class="preset-btn" data-preset="hologram">Hologram</button>
+    </div>
+
+    <div class="topbar-right">
+      <div id="fps-badge">60 FPS</div>
+      <div id="tier-badge">WebGL2</div>
+    </div>
+  </header>
+
+  <!-- VIEWPORT -->
+  <div id="viewport">
+    <canvas id="gl-canvas"></canvas>
+    <div class="viewport-hint">Drag to orbit · Scroll to zoom · Right-drag to pan</div>
+    <div class="viewport-controls">
+      <button class="vc-btn on" id="btn-bloom">Bloom</button>
+      <button class="vc-btn on" id="btn-fog">Fog</button>
+      <button class="vc-btn on" id="btn-rotate">Rotate</button>
+      <button class="vc-btn" id="btn-wireframe">Wire</button>
+      <button class="vc-btn" id="btn-stats">Stats</button>
+    </div>
+    <div id="error-overlay"></div>
+  </div>
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+    <div class="side-tabs">
+      <div class="side-tab active" data-tab="shader">Shader</div>
+      <div class="side-tab" data-tab="controls">Controls</div>
+      <div class="side-tab" data-tab="stats">Stats</div>
+    </div>
+
+    <!-- SHADER TAB -->
+    <div class="side-panel active" id="tab-shader">
+      <div id="editor-wrap">
+        <div class="editor-header">
+          <span class="editor-label">GLSL Editor</span>
+          <div class="shader-type-toggle">
+            <button class="stt-btn active" data-stype="fragment">Fragment</button>
+            <button class="stt-btn" data-stype="vertex">Vertex</button>
+          </div>
+        </div>
+        <textarea id="shader-editor" spellcheck="false"></textarea>
+        <div class="editor-actions">
+          <button class="run-btn" id="run-btn">▶ Apply Shader</button>
+          <button class="reset-btn" id="reset-btn">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONTROLS TAB -->
+    <div class="side-panel" id="tab-controls">
+      <div id="controls-panel">
+
+        <div class="ctrl-group">
+          <div class="ctrl-group-title">Lighting</div>
+          <div class="ctrl-row">
+            <span class="ctrl-name">Ambient</span>
+            <input type="range" id="ctrl-ambient" min="0" max="1" step="0.01" value="0.15">
+            <span class="ctrl-val" id="v-ambient">0.15</span>
+          </div>
+          <div class="ctrl-row">
+            <span class="ctrl-name">Light Color</span>
+            <input type="color" id="ctrl-lightcolor" value="#ffffff">
+            <span class="ctrl-val" style="color:var(--muted)">RGB</span>
+          </div>
+          <div class="ctrl-row">
+            <span class="ctrl-name">Intensity</span>
+            <input type="range" id="ctrl-intensity" min="0" max="5" step="0.05" value="2.0">
+            <span class="ctrl-val" id="v-intensity">2.0</span>
+          </div>
+          <div class="ctrl-row">
+            <span class="ctrl-name">Specular</span>
+            <input type="range" id="ctrl-specular" min="0" max="256" step="1" value="64">
+            <span class="ctrl-val" id="v-specular">64</span>
+          </div>
+        </div>
+
+        <div class="ctrl-group">
+          <div class="ctrl-group-title">PBR Material</div>
+          <div class="ctrl-row">
+            <span class="ctrl-name">Metallic</span>
+            <input type="range" id="ctrl-metallic" min="0" max="1" step="0.01" value="0.5">
+            <span class="ctrl-val" id="v-metallic">0.50</span>
+          </div>
+          <div class="ctrl-row">
+            <span class="ctrl-name">Roughness</span>
+            <input type="range" id="ctrl-roughness" min="0.01" max="1" step="0.01" value="0.4">
+            <span class="ctrl-val" id="v-roughness">0.40</span>
+          </div>
+          <div class="ctrl-row">
+            <span class="ctrl-name">Base Color</span>
+            <input type="color" id="ctrl-basecolor" value="#4488ff">
+            <span class="ctrl-val" style="color:var(--muted)">RGB</span>
+          </div>
+          <div class="ctrl-row">
+            <span class="ctrl-name">Emissive</span>
+            <input type="range" id="ctrl-emissive" min="0" max="3" step="0.05" value="0">
+            <span class="ctrl-val" id="v-emissive">0.00</span>
+          </div>
+        </div>
+
+        <div class="ctrl-group">
+          <div class="ctrl-group-title">Post Processing</div>
+          <div class="ctrl-row">
+            <span class="ctrl-name">Bloom Str.</span>
+            <input type="range" id="ctrl-bloom" min="0" max="3" step="0.05" value="1.0">
+            <span class="ctrl-val" id="v-bloom">1.00</span>
+          </div>
+          <div class="ctrl-row">
+            <span class="ctrl-name">Bloom Thresh</span>
+            <input type="range" id="ctrl-bloomt" min="0" max="2" step="0.05" value="0.8">
+            <span class="ctrl-val" id="v-bloomt">0.80</span>
+          </div>
+          <div class="ctrl-row">
+            <span class="ctrl-name">Fog Density</span>
+            <input type="range" id="ctrl-fog" min="0" max="0.1" step="0.001" value="0.02">
+            <span class="ctrl-val" id="v-fog">0.020</span>
+          </div>
+          <div class="ctrl-row">
+            <span class="ctrl-name">Fog Color</span>
+            <input type="color" id="ctrl-fogcolor" value="#000818">
+            <span class="ctrl-val" style="color:var(--muted)">RGB</span>
+          </div>
+          <div class="ctrl-row">
+            <span class="ctrl-name">Vignette</span>
+            <input type="range" id="ctrl-vignette" min="0" max="1.5" step="0.01" value="0.5">
+            <span class="ctrl-val" id="v-vignette">0.50</span>
+          </div>
+          <div class="ctrl-row">
+            <span class="ctrl-name">Tone Map</span>
+            <select id="ctrl-tonemap" style="font-family:var(--font-m);font-size:11px;background:var(--void);border:1px solid var(--dim);color:var(--text);padding:4px 8px;border-radius:3px;cursor:pointer;">
+              <option value="aces">ACES Filmic</option>
+              <option value="reinhard">Reinhard</option>
+              <option value="linear">Linear</option>
+              <option value="hejl">Hejl-Burgess</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="ctrl-group">
+          <div class="ctrl-group-title">Scene</div>
+          <div class="ctrl-row">
+            <span class="ctrl-name">Rotate Speed</span>
+            <input type="range" id="ctrl-rotspeed" min="0" max="2" step="0.01" value="0.4">
+            <span class="ctrl-val" id="v-rotspeed">0.40</span>
+          </div>
+          <div class="ctrl-row">
+            <span class="ctrl-name">Ground Scale</span>
+            <input type="range" id="ctrl-groundscale" min="10" max="200" step="1" value="60">
+            <span class="ctrl-val" id="v-groundscale">60</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- STATS TAB -->
+    <div class="side-panel" id="tab-stats">
+      <div id="stats-panel">
+        <div class="stat-card">
+          <div class="stat-card-title">Frame Rate</div>
+          <div class="stat-big" id="s-fps">60</div>
+          <div class="stat-sub">frames / second</div>
+          <div class="stat-bar-wrap">
+            <div class="stat-bar" id="sb-fps" style="background:linear-gradient(90deg,var(--accent),var(--accent2));width:100%"></div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-title">Frame Time</div>
+          <div class="stat-big" id="s-ft">16.7<span style="font-size:16px;font-weight:400;color:var(--muted)"> ms</span></div>
+          <div class="stat-sub">CPU + GPU estimated</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-title">Draw Calls / Triangles</div>
+          <div style="display:flex;gap:20px;margin-bottom:6px;">
+            <div>
+              <div class="stat-big" id="s-dc" style="font-size:28px;">—</div>
+              <div class="stat-sub">draw calls</div>
+            </div>
+            <div>
+              <div class="stat-big" id="s-tris" style="font-size:28px;">—</div>
+              <div class="stat-sub">triangles</div>
+            </div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-title">Render Passes</div>
+          <div class="pass-list" id="pass-list"></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-title">Backend Info</div>
+          <div id="backend-info" style="font-family:var(--font-m);font-size:11px;line-height:1.8;color:var(--text);"></div>
+        </div>
+      </div>
+    </div>
+
+  </aside>
+</div>
+
+<!-- THREE.JS + POSTPROCESSING -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════
+// SHADER PRESETS
+// ═══════════════════════════════════════════════════════
+const FRAGMENT_SHADERS = {
+cinematic: `// StyleShade — Cinematic PBR Fragment Shader
+// Uniforms available: time, resolution, baseColor, metallic,
+// roughness, ambientStr, lightColor, lightIntensity, specularPow,
+// emissiveStr, bloomThresh, bloomStr, fogDensity, vignetteStr
+
+varying vec3 vNormal;
+varying vec3 vWorldPos;
+varying vec2 vUv;
+varying vec3 vViewDir;
+
+uniform float time;
+uniform vec3  baseColor;
+uniform float metallic;
+uniform float roughness;
+uniform float ambientStr;
+uniform vec3  lightColor;
+uniform float lightIntensity;
+uniform float specularPow;
+uniform float emissiveStr;
+uniform float vignetteStr;
+uniform vec2  resolution;
+
+// ── ACES Tone Mapping ──────────────────
+vec3 aces(vec3 x) {
+  return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0);
+}
+
+// ── Fresnel-Schlick ────────────────────
+vec3 fresnel(float cosA, vec3 F0) {
+  return F0 + (1.0-F0)*pow(1.0-cosA, 5.0);
+}
+
+// ── GGX Distribution ──────────────────
+float ggx(vec3 N, vec3 H, float r) {
+  float a  = r*r;
+  float a2 = a*a;
+  float d  = max(dot(N,H),0.0);
+  float d2 = d*d;
+  float b  = d2*(a2-1.0)+1.0;
+  return a2 / (3.14159*b*b);
+}
+
+void main() {
+  vec3 N = normalize(vNormal);
+  vec3 V = normalize(vViewDir);
+
+  // Multiple animated lights
+  vec3 L1 = normalize(vec3(sin(time*0.5)*2.0, 3.0, cos(time*0.5)*2.0));
+  vec3 L2 = normalize(vec3(-2.0, 1.5, -1.0));
+  vec3 H1 = normalize(V + L1);
+  vec3 H2 = normalize(V + L2);
+
+  // PBR: F0 dielectric/metal blend
+  vec3 F0 = mix(vec3(0.04), baseColor, metallic);
+
+  // Cook-Torrance specular
+  float r = max(roughness, 0.01);
+  vec3  spec1 = fresnel(max(dot(H1,V),0.0), F0) * ggx(N,H1,r);
+  vec3  spec2 = fresnel(max(dot(H2,V),0.0), F0) * ggx(N,H2,r) * 0.4;
+
+  // Diffuse
+  float NdotL1 = max(dot(N,L1), 0.0);
+  float NdotL2 = max(dot(N,L2), 0.0);
+  vec3  diff1  = baseColor * (1.0-metallic) * NdotL1;
+  vec3  diff2  = baseColor * (1.0-metallic) * NdotL2 * 0.3;
+
+  // Ambient with fake GI
+  vec3 ambient = baseColor * ambientStr * (0.5 + 0.5*N.y);
+
+  // Compose
+  vec3 color = ambient
+    + (diff1 + spec1) * lightColor * lightIntensity
+    + (diff2 + spec2) * vec3(0.4, 0.6, 1.0) * 0.8;
+
+  // Emissive rim
+  float rim = pow(1.0-max(dot(N,V),0.0), 3.0);
+  color += baseColor * rim * emissiveStr * 2.0;
+
+  // Tone map
+  color = aces(color);
+
+  // Gamma
+  color = pow(max(color,0.0), vec3(1.0/2.2));
+
+  // Vignette
+  vec2 uv = gl_FragCoord.xy / resolution;
+  float vig = 1.0 - vignetteStr * dot(uv-0.5, uv-0.5) * 4.0;
+  color *= vig;
+
+  gl_FragColor = vec4(color, 1.0);
+}`,
+
+neon: `// StyleShade — Neon Void
+varying vec3 vNormal;
+varying vec3 vWorldPos;
+varying vec2 vUv;
+varying vec3 vViewDir;
+uniform float time;
+uniform vec3  baseColor;
+uniform float vignetteStr;
+uniform vec2  resolution;
+
+vec3 aces(vec3 x) {
+  return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0);
+}
+
+void main() {
+  vec3 N = normalize(vNormal);
+  vec3 V = normalize(vViewDir);
+
+  // Animated neon lights
+  float t = time * 0.8;
+  vec3 neon1 = vec3(0.0, 1.0, 1.0); // cyan
+  vec3 neon2 = vec3(1.0, 0.0, 0.5); // magenta
+  vec3 neon3 = vec3(0.3, 0.0, 1.0); // violet
+
+  vec3 L1 = normalize(vec3(sin(t)*3.0, 2.0, cos(t)*3.0));
+  vec3 L2 = normalize(vec3(cos(t*1.3)*2.0, 1.5, sin(t*1.3)*2.0));
+  vec3 L3 = normalize(vec3(0.0, -1.0, 0.5));
+
+  float d1 = max(dot(N,L1), 0.0);
+  float d2 = max(dot(N,L2), 0.0);
+  float d3 = max(dot(N,L3), 0.0);
+
+  // Rim glow
+  float rim = pow(1.0-max(dot(N,V),0.0), 2.5);
+
+  // Grid scanlines on surface
+  float grid = step(0.95, fract(vUv.x*20.0)) + step(0.95, fract(vUv.y*20.0));
+  grid *= 0.3;
+
+  vec3 color = neon1*d1*2.5 + neon2*d2*2.0 + neon3*d3*0.8;
+  color += (neon1+neon2)*rim*1.5;
+  color += grid * (neon1*0.5 + neon2*0.5);
+  color += vec3(0.0, 0.0, 0.05); // dark base
+
+  color = aces(color * 1.2);
+  color = pow(max(color,0.0), vec3(1.0/2.2));
+
+  vec2 uv = gl_FragCoord.xy/resolution;
+  float vig = 1.0 - vignetteStr * dot(uv-0.5,uv-0.5)*4.0;
+  color *= vig;
+
+  gl_FragColor = vec4(color, 1.0);
+}`,
+
+alien: `// StyleShade — Alien World
+varying vec3 vNormal;
+varying vec3 vWorldPos;
+varying vec2 vUv;
+varying vec3 vViewDir;
+uniform float time;
+uniform float roughness;
+uniform vec2  resolution;
+uniform float vignetteStr;
+
+// Simple noise
+float hash(vec2 p) { return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5); }
+float noise(vec2 p) {
+  vec2 i = floor(p); vec2 f = fract(p);
+  f = f*f*(3.0-2.0*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),
+             mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
+}
+
+vec3 aces(vec3 x) {
+  return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0);
+}
+
+void main() {
+  vec3 N = normalize(vNormal);
+  vec3 V = normalize(vViewDir);
+
+  // Animated alien surface
+  float t = time * 0.3;
+  float n1 = noise(vUv*6.0 + t);
+  float n2 = noise(vUv*12.0 - t*1.5);
+  float n3 = noise(vUv*3.0 + vec2(t, -t));
+
+  // Bioluminescent color bands
+  vec3 c1 = vec3(0.0, 0.8, 0.3);  // green
+  vec3 c2 = vec3(0.5, 0.0, 1.0);  // purple
+  vec3 c3 = vec3(1.0, 0.4, 0.0);  // orange veins
+
+  float band = sin(vUv.y*20.0 + n1*4.0 + t*2.0)*0.5+0.5;
+  vec3 base = mix(c1, c2, band);
+
+  // Vein pattern
+  float vein = smoothstep(0.7, 0.75, n2);
+  base = mix(base, c3, vein * 0.8);
+
+  // Pulse glow
+  float pulse = sin(t*3.0 + n3*6.28)*0.5+0.5;
+  base += c1 * pulse * 0.3 * (1.0-roughness);
+
+  // Lighting
+  vec3 L = normalize(vec3(1.5, 2.0, 1.0));
+  float diff = max(dot(N,L), 0.0);
+  float rim  = pow(1.0-max(dot(N,V),0.0), 3.0);
+
+  vec3 color = base*(0.3 + diff*0.7) + base*rim*0.8;
+  color += c1 * n1 * 0.15; // subsurface scatter fake
+
+  color = aces(color);
+  color = pow(max(color,0.0), vec3(1.0/2.2));
+
+  vec2 uv = gl_FragCoord.xy/resolution;
+  float vig = 1.0 - vignetteStr*dot(uv-0.5,uv-0.5)*4.0;
+  color *= vig;
+
+  gl_FragColor = vec4(color, 1.0);
+}`,
+
+wireframe: `// StyleShade — Wireframe
+varying vec3 vNormal;
+varying vec3 vWorldPos;
+varying vec2 vUv;
+varying vec3 vViewDir;
+uniform float time;
+uniform vec3  baseColor;
+
+void main() {
+  vec3 N = normalize(vNormal);
+  vec3 V = normalize(vViewDir);
+  float rim = pow(1.0-max(dot(N,V),0.0), 2.0);
+
+  // Grid wireframe using UVs
+  float lx = step(0.96, fract(vUv.x * 12.0));
+  float ly = step(0.96, fract(vUv.y * 12.0));
+  float wire = max(lx, ly);
+
+  // Animated pulse
+  float t = time * 0.5;
+  float pulse = sin(t + vUv.y * 6.28) * 0.5 + 0.5;
+
+  vec3 wireColor = mix(baseColor, vec3(0.0,1.0,1.0), pulse * 0.6);
+  vec3 bgColor   = vec3(0.0);
+
+  vec3 color = mix(bgColor, wireColor, wire);
+  color += wireColor * rim * 0.4;
+
+  // Scanline
+  float scan = step(0.98, fract(gl_FragCoord.y * 0.05 + t * 0.1));
+  color += vec3(0.0, 0.2, 0.4) * scan;
+
+  gl_FragColor = vec4(color, 1.0);
+}`,
+
+xray: `// StyleShade — X-Ray
+varying vec3 vNormal;
+varying vec3 vWorldPos;
+varying vec2 vUv;
+varying vec3 vViewDir;
+uniform float time;
+uniform float vignetteStr;
+uniform vec2  resolution;
+
+void main() {
+  vec3 N = normalize(vNormal);
+  vec3 V = normalize(vViewDir);
+
+  float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+  float t = time * 0.4;
+
+  // Animated edge glow
+  vec3 edgeColor = mix(
+    vec3(0.0, 0.5, 1.0),
+    vec3(0.0, 1.0, 0.7),
+    sin(t + fresnel * 3.14) * 0.5 + 0.5
+  );
+
+  // Internal structure lines
+  float inner = pow(1.0 - fresnel, 4.0);
+  float scan  = sin(vWorldPos.y * 8.0 + t * 3.0) * 0.5 + 0.5;
+  scan = pow(scan, 6.0) * inner * 0.4;
+
+  vec3 color = edgeColor * fresnel * 2.5;
+  color += vec3(0.0, 0.3, 0.6) * scan;
+  color += vec3(0.02, 0.04, 0.08) * inner;
+
+  // Chromatic ab on edges
+  float ca = fresnel * 0.008;
+  color.r += ca;
+  color.b -= ca;
+
+  float alpha = clamp(fresnel * 1.5 + scan, 0.05, 1.0);
+
+  vec2 uv = gl_FragCoord.xy/resolution;
+  float vig = 1.0 - vignetteStr*dot(uv-0.5,uv-0.5)*4.0;
+  color *= vig;
+
+  gl_FragColor = vec4(color, alpha);
+}`,
+
+hologram: `// StyleShade — Hologram
+varying vec3 vNormal;
+varying vec3 vWorldPos;
+varying vec2 vUv;
+varying vec3 vViewDir;
+uniform float time;
+uniform vec3  baseColor;
+uniform vec2  resolution;
+uniform float vignetteStr;
+
+void main() {
+  vec3 N = normalize(vNormal);
+  vec3 V = normalize(vViewDir);
+
+  float t = time;
+  float fresnel = pow(1.0 - max(dot(N,V), 0.0), 2.0);
+
+  // Holographic scanlines
+  float scan = fract(vWorldPos.y * 4.0 - t * 1.5);
+  float scanLine = step(0.9, scan) * 0.6;
+
+  // Data noise flicker
+  float flicker = step(0.97, fract(sin(t * 17.3 + vUv.y * 100.0) * 4375.0));
+  float glitch  = step(0.99, fract(sin(t * 5.0) * 9999.0)) * step(0.5, fract(vUv.y * 5.0));
+
+  // Base hologram color
+  vec3 holo = mix(vec3(0.0, 0.8, 1.0), baseColor, 0.3);
+  holo = mix(holo, vec3(1.0, 0.9, 0.5), glitch);
+
+  vec3 color = holo * (fresnel * 1.8 + 0.2);
+  color += holo * scanLine;
+  color += holo * flicker * 0.5;
+
+  // Interference pattern
+  float inter = sin(vUv.x * 80.0 + t * 3.0) * sin(vUv.y * 80.0 + t * 2.0);
+  color += holo * max(0.0, inter) * 0.1;
+
+  // Rim
+  color += holo * pow(fresnel, 1.5) * 0.8;
+
+  float alpha = clamp(fresnel * 2.0 + scanLine * 0.5 + 0.1, 0.0, 0.9);
+  color = pow(max(color,0.0), vec3(1.0/2.2));
+
+  vec2 uv = gl_FragCoord.xy/resolution;
+  float vig = 1.0-vignetteStr*dot(uv-0.5,uv-0.5)*4.0;
+  color *= vig;
+
+  gl_FragColor = vec4(color, alpha);
+}`
+};
+
+const VERTEX_SHADER = `
+varying vec3 vNormal;
+varying vec3 vWorldPos;
+varying vec2 vUv;
+varying vec3 vViewDir;
+uniform float time;
+uniform vec3  cameraPos;
+
+void main() {
+  vUv = uv;
+  vNormal = normalize(normalMatrix * normal);
+
+  vec4 worldPos = modelMatrix * vec4(position, 1.0);
+  vWorldPos = worldPos.xyz;
+  vViewDir = cameraPos - worldPos.xyz;
+
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+// ═══════════════════════════════════════════════════════
+// THREE.JS SCENE
+// ═══════════════════════════════════════════════════════
+const canvas = document.getElementById('gl-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000818, 0.02);
+scene.background = new THREE.Color(0x000810);
+
+const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 500);
+camera.position.set(0, 4, 12);
+
+// ── Orbit controls (manual) ──────────────────────────
+let isDragging = false, isRightDrag = false;
+let prevMouse = {x:0, y:0};
+let orbitTheta = 0, orbitPhi = Math.PI/5, orbitRadius = 12;
+let panX = 0, panY = 0;
+
+canvas.addEventListener('mousedown', e => {
+  isDragging = true;
+  isRightDrag = e.button === 2;
+  prevMouse = {x: e.clientX, y: e.clientY};
+});
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+window.addEventListener('mouseup', () => isDragging = false);
+window.addEventListener('mousemove', e => {
+  if (!isDragging) return;
+  const dx = e.clientX - prevMouse.x;
+  const dy = e.clientY - prevMouse.y;
+  prevMouse = {x: e.clientX, y: e.clientY};
+  if (isRightDrag) { panX -= dx * 0.02; panY += dy * 0.02; }
+  else { orbitTheta -= dx * 0.008; orbitPhi = Math.max(0.1, Math.min(Math.PI/2.2, orbitPhi - dy*0.006)); }
+});
+canvas.addEventListener('wheel', e => {
+  orbitRadius = Math.max(3, Math.min(40, orbitRadius + e.deltaY * 0.02));
+});
+
+function updateCamera() {
+  camera.position.x = panX + orbitRadius * Math.sin(orbitTheta) * Math.cos(orbitPhi);
+  camera.position.y = panY + orbitRadius * Math.sin(orbitPhi);
+  camera.position.z = orbitRadius * Math.cos(orbitTheta) * Math.cos(orbitPhi);
+  camera.lookAt(panX, panY, 0);
+}
+
+// ── Uniforms ─────────────────────────────────────────
+const uniforms = {
+  time:        { value: 0 },
+  resolution:  { value: new THREE.Vector2(1, 1) },
+  cameraPos:   { value: camera.position },
+  baseColor:   { value: new THREE.Color(0x4488ff) },
+  metallic:    { value: 0.5 },
+  roughness:   { value: 0.4 },
+  ambientStr:  { value: 0.15 },
+  lightColor:  { value: new THREE.Color(0xffffff) },
+  lightIntensity: { value: 2.0 },
+  specularPow: { value: 64 },
+  emissiveStr: { value: 0 },
+  bloomStr:    { value: 1.0 },
+  bloomThresh: { value: 0.8 },
+  fogDensity:  { value: 0.02 },
+  vignetteStr: { value: 0.5 },
+};
+
+// ── Material factory ──────────────────────────────────
+let currentPreset = 'cinematic';
+let currentShaderType = 'fragment';
+
+function makeMaterial(fragSrc, vertSrc) {
+  return new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader:   vertSrc   || VERTEX_SHADER,
+    fragmentShader: fragSrc   || FRAGMENT_SHADERS.cinematic,
+    transparent: true,
+    depthWrite: true,
+    side: THREE.FrontSide,
+  });
+}
+
+let mat = makeMaterial(FRAGMENT_SHADERS.cinematic);
+
+// ── Scene objects ─────────────────────────────────────
+// Ground plane
+const groundGeo = new THREE.PlaneGeometry(60, 60, 40, 40);
+const groundMat = new THREE.ShaderMaterial({
+  uniforms: { ...uniforms, baseColor: { value: new THREE.Color(0x111820) } },
+  vertexShader: VERTEX_SHADER,
+  fragmentShader: `
+    varying vec3 vNormal; varying vec3 vWorldPos; varying vec2 vUv; varying vec3 vViewDir;
+    uniform float time; uniform float fogDensity; uniform vec3 baseColor;
+    void main() {
+      float grid = step(0.97, max(fract(vUv.x*30.0), fract(vUv.y*30.0)));
+      float gridFade = 1.0 - length(vUv - 0.5)*1.5;
+      gridFade = clamp(gridFade, 0.0, 1.0);
+      float fog = 1.0 - exp(-fogDensity * length(vWorldPos) * 0.5);
+      vec3 color = mix(baseColor, vec3(0.0, 0.5, 0.8)*0.5, grid*gridFade*0.8);
+      color = mix(color, vec3(0.0,0.01,0.06), fog);
+      color = pow(max(color,0.0), vec3(1.0/2.2));
+      gl_FragColor = vec4(color, 1.0);
+    }`,
+});
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -2;
+scene.add(ground);
+
+// Main objects
+const objects = [];
+const geometries = [
+  new THREE.IcosahedronGeometry(1.5, 2),
+  new THREE.TorusKnotGeometry(1, 0.38, 128, 16),
+  new THREE.OctahedronGeometry(1.5),
+];
+const positions = [ [-4, 0, 0], [0, 0.3, 0], [4, 0, 0] ];
+
+for (let i = 0; i < 3; i++) {
+  const mesh = new THREE.Mesh(geometries[i], mat.clone());
+  mesh.position.set(...positions[i]);
+  mesh.castShadow = true;
+  scene.add(mesh);
+  objects.push(mesh);
+}
+
+// Floating orbs (smaller detail objects)
+const orbGeo = new THREE.SphereGeometry(0.25, 16, 16);
+for (let i = 0; i < 12; i++) {
+  const orb = new THREE.Mesh(orbGeo, mat.clone());
+  const angle = (i / 12) * Math.PI * 2;
+  orb.position.set(Math.cos(angle) * 6, Math.sin(angle * 2) * 1.5 + 1, Math.sin(angle) * 6);
+  orb.userData.orbAngle = angle;
+  orb.userData.orbIndex = i;
+  scene.add(orb);
+  objects.push(orb);
+}
+
+// Distant pillars
+const pillarGeo = new THREE.CylinderGeometry(0.3, 0.3, 8, 8);
+for (let i = 0; i < 8; i++) {
+  const angle = (i / 8) * Math.PI * 2;
+  const pillar = new THREE.Mesh(pillarGeo, mat.clone());
+  pillar.position.set(Math.cos(angle)*18, 2, Math.sin(angle)*18);
+  scene.add(pillar);
+}
+
+// Lights (for shadows)
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+dirLight.position.set(5, 8, 3);
+dirLight.castShadow = true;
+scene.add(dirLight);
+scene.add(new THREE.AmbientLight(0x111122, 0.5));
+
+// ── Postprocessing (manual bloom via offscreen render) ──
+// We'll do a simple luminance pass in the composite
+// (Full bloom requires EffectComposer — we approximate via shader)
+let useBloom = true, useFog = true, useRotate = true, useWireframe = false;
+let rotSpeed = 0.4;
+
+// ── Bloom: simple ping-pong blur to a smaller RT ────────
+const bloomRT1 = new THREE.WebGLRenderTarget(512, 512, { format: THREE.RGBAFormat });
+const bloomRT2 = new THREE.WebGLRenderTarget(512, 512, { format: THREE.RGBAFormat });
+
+const blurMat = new THREE.ShaderMaterial({
+  uniforms: {
+    tMap:      { value: null },
+    direction: { value: new THREE.Vector2(1, 0) },
+    texSize:   { value: new THREE.Vector2(512, 512) },
+    strength:  { value: 1.0 },
+    threshold: { value: 0.8 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position,1.0); }`,
+  fragmentShader: `
+    varying vec2 vUv;
+    uniform sampler2D tMap;
+    uniform vec2 direction; uniform vec2 texSize;
+    uniform float strength; uniform float threshold;
+    void main(){
+      vec2 offset = direction / texSize;
+      vec4 c = vec4(0.0);
+      float weights[5]; weights[0]=0.227; weights[1]=0.194; weights[2]=0.121; weights[3]=0.054; weights[4]=0.016;
+      vec4 center = texture2D(tMap, vUv);
+      // Threshold
+      float lum = dot(center.rgb, vec3(0.299,0.587,0.114));
+      float mask = smoothstep(threshold, threshold+0.1, lum);
+      for(int i=-4;i<=4;i++){
+        float w = weights[abs(i)];
+        c += texture2D(tMap, vUv + float(i)*offset) * w;
+      }
+      gl_FragColor = c * mask * strength;
+    }`,
+});
+
+const compositeMat = new THREE.ShaderMaterial({
+  uniforms: {
+    tScene: { value: null },
+    tBloom: { value: null },
+    bloomStr: { value: 1.0 },
+    useBloom: { value: 1.0 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position,1.0); }`,
+  fragmentShader: `
+    varying vec2 vUv;
+    uniform sampler2D tScene; uniform sampler2D tBloom;
+    uniform float bloomStr; uniform float useBloom;
+    void main(){
+      vec4 scene = texture2D(tScene, vUv);
+      vec4 bloom = texture2D(tBloom, vUv);
+      gl_FragColor = vec4(scene.rgb + bloom.rgb * bloomStr * useBloom, 1.0);
+    }`,
+});
+
+const quadGeo  = new THREE.PlaneGeometry(2, 2);
+const blurMesh = new THREE.Mesh(quadGeo, blurMat);
+const compMesh = new THREE.Mesh(quadGeo, compositeMat);
+const quadScene = new THREE.Scene();
+quadScene.add(blurMesh);
+const compScene = new THREE.Scene();
+compScene.add(compMesh);
+const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+const mainRT = new THREE.WebGLRenderTarget(1, 1, { format: THREE.RGBAFormat });
+
+// ── Resize ───────────────────────────────────────────
+function resize() {
+  const vp = document.getElementById('viewport');
+  const W = vp.clientWidth, H = vp.clientHeight;
+  renderer.setSize(W, H);
+  camera.aspect = W / H;
+  camera.updateProjectionMatrix();
+  uniforms.resolution.value.set(W, H);
+  mainRT.setSize(W, H);
+}
+resize();
+window.addEventListener('resize', resize);
+new ResizeObserver(resize).observe(document.getElementById('viewport'));
+
+// ── Render loop ──────────────────────────────────────
+let frame = 0, lastTime = 0, fps = 60;
+let drawCalls = 0, triCount = 0;
+
+function render(ts) {
+  requestAnimationFrame(render);
+  const dt = (ts - lastTime) / 1000;
+  lastTime = ts;
+  fps = fps * 0.95 + (1 / Math.max(dt, 0.001)) * 0.05;
+  frame++;
+
+  uniforms.time.value = ts * 0.001;
+  uniforms.cameraPos.value.copy(camera.position);
+  uniforms.fogDensity.value = useFog ? parseFloat(document.getElementById('ctrl-fog').value) : 0;
+
+  // Animate
+  if (useRotate) {
+    const spd = rotSpeed * 0.5;
+    objects[0].rotation.y += spd * 0.013 * dt * 60;
+    objects[0].rotation.x += spd * 0.007 * dt * 60;
+    objects[1].rotation.y += spd * 0.008 * dt * 60;
+    objects[1].rotation.z += spd * 0.005 * dt * 60;
+    objects[2].rotation.y -= spd * 0.011 * dt * 60;
+    objects[2].rotation.x += spd * 0.006 * dt * 60;
+  }
+
+  // Animate orbs
+  for (let i = 3; i < 15; i++) {
+    if (!objects[i]) continue;
+    const t  = ts * 0.001;
+    const a  = objects[i].userData.orbAngle + t * 0.3;
+    const ix = objects[i].userData.orbIndex;
+    objects[i].position.x = Math.cos(a) * 6;
+    objects[i].position.y = Math.sin(a * 2 + ix) * 1.5 + 1;
+    objects[i].position.z = Math.sin(a) * 6;
+  }
+
+  updateCamera();
+
+  // Wireframe toggle
+  objects.forEach(o => { if (o.material) o.material.wireframe = useWireframe; });
+
+  // Bloom pass
+  if (useBloom) {
+    renderer.setRenderTarget(mainRT);
+    renderer.render(scene, camera);
+
+    blurMat.uniforms.tMap.value = mainRT.texture;
+    blurMat.uniforms.direction.value.set(1, 0);
+    blurMat.uniforms.strength.value = uniforms.bloomStr.value;
+    blurMat.uniforms.threshold.value = uniforms.bloomThresh ? uniforms.bloomThresh.value : 0.8;
+    renderer.setRenderTarget(bloomRT1);
+    renderer.render(quadScene, quadCam);
+
+    blurMat.uniforms.tMap.value = bloomRT1.texture;
+    blurMat.uniforms.direction.value.set(0, 1);
+    renderer.setRenderTarget(bloomRT2);
+    renderer.render(quadScene, quadCam);
+
+    compositeMat.uniforms.tScene.value = mainRT.texture;
+    compositeMat.uniforms.tBloom.value = bloomRT2.texture;
+    compositeMat.uniforms.bloomStr.value = uniforms.bloomStr.value;
+    compositeMat.uniforms.useBloom.value = 1.0;
+    renderer.setRenderTarget(null);
+    renderer.render(compScene, quadCam);
+  } else {
+    renderer.setRenderTarget(null);
+    renderer.render(scene, camera);
+  }
+
+  drawCalls = renderer.info.render.calls;
+  triCount  = renderer.info.render.triangles;
+
+  // Update HUD
+  if (frame % 10 === 0) updateStats();
+}
+render(0);
+
+function updateStats() {
+  const f = Math.round(fps);
+  const ft = (1000/Math.max(fps,1)).toFixed(1);
+  const color = fps > 50 ? '#00ff88' : fps > 30 ? '#ffcc00' : '#ff4466';
+  document.getElementById('fps-badge').textContent = f + ' FPS';
+  document.getElementById('fps-badge').style.color = color;
+  document.getElementById('s-fps').textContent = f;
+  document.getElementById('s-fps').style.color = color;
+  document.getElementById('s-ft').innerHTML = ft + '<span style="font-size:16px;font-weight:400;color:var(--muted)"> ms</span>';
+  document.getElementById('sb-fps').style.width = Math.min(100, (fps/60)*100) + '%';
+  document.getElementById('s-dc').textContent = drawCalls;
+  document.getElementById('s-tris').textContent = (triCount/1000).toFixed(1)+'k';
+}
+
+// ── Pass list ─────────────────────────────────────────
+const passes = [
+  { name:'Geometry',   color:'var(--accent)',  pct: 45 },
+  { name:'Shadow',     color:'var(--accent2)', pct: 20 },
+  { name:'Bloom x2',  color:'var(--accent3)',  pct: 18 },
+  { name:'Composite',  color:'var(--green)',   pct: 10 },
+  { name:'Present',    color:'var(--muted)',   pct: 7  },
+];
+const pl = document.getElementById('pass-list');
+passes.forEach(p => {
+  const row = document.createElement('div');
+  row.className = 'pass-item';
+  row.innerHTML = `<span class="pass-name">${p.name}</span>
+    <div class="pass-bar-wrap"><div class="pass-bar" style="width:${p.pct}%;background:${p.color}"></div></div>
+    <span class="pass-cost">${(p.pct/100*16).toFixed(1)}ms</span>`;
+  pl.appendChild(row);
+});
+
+document.getElementById('backend-info').innerHTML = [
+  `Backend: <span style="color:var(--accent)">WebGL2</span>`,
+  `Version: <span style="color:var(--text)">StyleShade v1.0.0</span>`,
+  `Engine: <span style="color:var(--text)">Three.js r128</span>`,
+  `Renderer: <span style="color:var(--text)">${renderer.info.render ? 'Active' : '—'}</span>`,
+].join('<br>');
+
+document.getElementById('tier-badge').textContent = 'WebGL2';
+
+// ═══════════════════════════════════════════════════════
+// SHADER EDITOR
+// ═══════════════════════════════════════════════════════
+const editor = document.getElementById('shader-editor');
+editor.value = FRAGMENT_SHADERS.cinematic;
+
+function applyShader() {
+  const errEl = document.getElementById('error-overlay');
+  const src = editor.value;
+
+  try {
+    const newMat = makeMaterial(
+      currentShaderType === 'fragment' ? src : FRAGMENT_SHADERS[currentPreset],
+      currentShaderType === 'vertex'   ? src : VERTEX_SHADER
+    );
+
+    // Test compile: create a temp mesh off-screen
+    const testMesh = new THREE.Mesh(new THREE.SphereGeometry(0.01, 3, 3), newMat);
+    scene.add(testMesh);
+    renderer.compile(scene, camera);
+    scene.remove(testMesh);
+
+    // Apply to all objects
+    objects.forEach(o => {
+      const m = newMat.clone();
+      m.uniforms = uniforms;
+      o.material = m;
+      o.material.wireframe = useWireframe;
+    });
+
+    errEl.style.display = 'none';
+    mat = newMat;
+  } catch(e) {
+    errEl.style.display = 'block';
+    errEl.textContent = '⚠ GLSL Error: ' + e.message;
+  }
+}
+
+document.getElementById('run-btn').addEventListener('click', applyShader);
+document.getElementById('reset-btn').addEventListener('click', () => {
+  editor.value = currentShaderType === 'fragment'
+    ? FRAGMENT_SHADERS[currentPreset]
+    : VERTEX_SHADER;
+  applyShader();
+});
+
+// Tab key support in editor
+editor.addEventListener('keydown', e => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const s = editor.selectionStart, end = editor.selectionEnd;
+    editor.value = editor.value.substring(0, s) + '  ' + editor.value.substring(end);
+    editor.selectionStart = editor.selectionEnd = s + 2;
+  }
+  if (e.ctrlKey && e.key === 'Enter') applyShader();
+});
+
+// Shader type toggle
+document.querySelectorAll('.stt-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.stt-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentShaderType = btn.dataset.stype;
+    editor.value = currentShaderType === 'fragment'
+      ? FRAGMENT_SHADERS[currentPreset]
+      : VERTEX_SHADER;
+  });
+});
+
+// ═══════════════════════════════════════════════════════
+// PRESETS
+// ═══════════════════════════════════════════════════════
+document.querySelectorAll('.preset-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentPreset = btn.dataset.preset;
+
+    // Update editor
+    if (currentShaderType === 'fragment') {
+      editor.value = FRAGMENT_SHADERS[currentPreset] || FRAGMENT_SHADERS.cinematic;
+    }
+    applyShader();
+
+    // Preset-specific settings
+    const presetColors = {
+      cinematic:  '#4488ff', neon: '#00ffcc', alien: '#22ff66',
+      wireframe:  '#00ccff', xray: '#0055ff', hologram: '#00aaff',
+    };
+    if (presetColors[currentPreset]) {
+      const c = presetColors[currentPreset];
+      document.getElementById('ctrl-basecolor').value = c;
+      uniforms.baseColor.value.set(c);
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════
+// CONTROLS
+// ═══════════════════════════════════════════════════════
+function bindRange(id, valId, uniform, fmt) {
+  const el = document.getElementById(id);
+  const vl = document.getElementById(valId);
+  el.addEventListener('input', () => {
+    const v = parseFloat(el.value);
+    if (vl) vl.textContent = fmt ? v.toFixed(fmt) : v;
+    if (uniform && uniforms[uniform]) uniforms[uniform].value = v;
+  });
+}
+function bindColor(id, uniform) {
+  const el = document.getElementById(id);
+  el.addEventListener('input', () => {
+    if (uniforms[uniform]) uniforms[uniform].value.set(el.value);
+  });
+}
+
+bindRange('ctrl-ambient',     'v-ambient',     'ambientStr',     2);
+bindRange('ctrl-intensity',   'v-intensity',   'lightIntensity', 1);
+bindRange('ctrl-specular',    'v-specular',    null,             0);
+bindRange('ctrl-metallic',    'v-metallic',    'metallic',       2);
+bindRange('ctrl-roughness',   'v-roughness',   'roughness',      2);
+bindRange('ctrl-emissive',    'v-emissive',    'emissiveStr',    2);
+bindRange('ctrl-bloom',       'v-bloom',       'bloomStr',       2);
+bindRange('ctrl-bloomt',      'v-bloomt',      'bloomThresh',    2);
+bindRange('ctrl-fog',         'v-fog',         'fogDensity',     3);
+bindRange('ctrl-vignette',    'v-vignette',    'vignetteStr',    2);
+bindRange('ctrl-rotspeed',    'v-rotspeed',    null,             2);
+bindRange('ctrl-groundscale', 'v-groundscale', null,             0);
+
+document.getElementById('ctrl-rotspeed').addEventListener('input', e => {
+  rotSpeed = parseFloat(e.target.value);
+});
+document.getElementById('ctrl-groundscale').addEventListener('input', e => {
+  ground.scale.setScalar(parseFloat(e.target.value) / 60);
+});
+
+bindColor('ctrl-lightcolor', 'lightColor');
+bindColor('ctrl-basecolor',  'baseColor');
+bindColor('ctrl-fogcolor', 'fogColor');
+document.getElementById('ctrl-fogcolor').addEventListener('input', e => {
+  scene.fog.color.set(e.target.value);
+  scene.background.set(e.target.value);
+});
+
+document.getElementById('ctrl-tonemap').addEventListener('change', e => {
+  const maps = {
+    aces: THREE.ACESFilmicToneMapping, reinhard: THREE.ReinhardToneMapping,
+    linear: THREE.LinearToneMapping,  hejl: THREE.CineonToneMapping,
+  };
+  renderer.toneMapping = maps[e.target.value] || THREE.ACESFilmicToneMapping;
+});
+
+// ── Viewport control buttons ──────────────────────────
+function vc(id, onToggle) {
+  const btn = document.getElementById(id);
+  btn.addEventListener('click', () => {
+    btn.classList.toggle('on');
+    onToggle(btn.classList.contains('on'));
+  });
+}
+vc('btn-bloom',     v => { useBloom = v; });
+vc('btn-fog',       v => { useFog = v; });
+vc('btn-rotate',    v => { useRotate = v; });
+vc('btn-wireframe', v => { useWireframe = v; objects.forEach(o => { if(o.material) o.material.wireframe = v; }); });
+vc('btn-stats',     v => {
+  document.querySelectorAll('.side-tab')[2].click();
+});
+
+// ── Sidebar tabs ───────────────────────────────────────
+document.querySelectorAll('.side-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.side-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.side-panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Ctrl+Enter shortcut hint ───────────────────────────
+console.info('%c[StyleShade Sandbox] Ctrl+Enter to apply shader. Have fun!', 'color:#00e5ff;font-family:monospace');
+</script>
+</body>
+</html>

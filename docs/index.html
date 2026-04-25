@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StyleShade — High-Performance Web Shader System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Reset & Base ───────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --black:   #020406;
+  --void:    #050810;
+  --panel:   #0a0e17;
+  --border:  #141c2e;
+  --dim:     #1e2a42;
+  --text:    #c8d4e8;
+  --muted:   #4a5a78;
+  --accent:  #00e5ff;
+  --accent2: #7b61ff;
+  --accent3: #ff6b35;
+  --green:   #00ff88;
+  --white:   #f0f4ff;
+  --font-display: 'Syne', sans-serif;
+  --font-mono:    'DM Mono', monospace;
+  --font-ui:      'Space Mono', monospace;
+  --glow: 0 0 40px rgba(0,229,255,0.15);
+  --glow2: 0 0 60px rgba(123,97,255,0.2);
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--black);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-x: hidden;
+  cursor: crosshair;
+}
+
+/* ── Canvas background ───────────────────────────────────────── */
+#bg-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.layer { position: relative; z-index: 1; }
+
+/* ── Scrollbar ───────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--void); }
+::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 2px; }
+
+/* ── Nav ─────────────────────────────────────────────────────── */
+nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 40px;
+  height: 60px;
+  background: rgba(2,4,6,0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+}
+
+.nav-logo {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 18px;
+  color: var(--white);
+  letter-spacing: -0.5px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.nav-logo-dot {
+  width: 8px; height: 8px;
+  background: var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 12px var(--accent);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,100% { opacity:1; transform:scale(1); }
+  50% { opacity:0.4; transform:scale(0.7); }
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  list-style: none;
+}
+.nav-links a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: color 0.2s;
+}
+.nav-links a:hover { color: var(--accent); }
+
+.nav-cta {
+  background: var(--accent);
+  color: var(--black) !important;
+  padding: 8px 18px;
+  border-radius: 3px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  transition: box-shadow 0.2s !important;
+}
+.nav-cta:hover { box-shadow: 0 0 24px rgba(0,229,255,0.5) !important; color: var(--black) !important; }
+
+/* ── Hero ─────────────────────────────────────────────────────── */
+#hero {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 120px 80px 80px;
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  opacity: 0;
+  animation: fadeUp 0.8s 0.2s forwards;
+}
+.hero-eyebrow::before {
+  content: '';
+  width: 32px; height: 1px;
+  background: var(--accent);
+}
+
+.hero-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(52px, 7vw, 100px);
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  color: var(--white);
+  margin-bottom: 16px;
+  opacity: 0;
+  animation: fadeUp 0.9s 0.35s forwards;
+}
+.hero-title .accent-word {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero-subtitle {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(16px, 2vw, 22px);
+  color: var(--muted);
+  max-width: 520px;
+  margin-bottom: 48px;
+  line-height: 1.5;
+  opacity: 0;
+  animation: fadeUp 0.9s 0.5s forwards;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  opacity: 0;
+  animation: fadeUp 0.9s 0.65s forwards;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--black);
+  border: none;
+  padding: 14px 32px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 3px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: box-shadow 0.25s, transform 0.15s;
+}
+.btn-primary:hover {
+  box-shadow: 0 0 40px rgba(0,229,255,0.45);
+  transform: translateY(-2px);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--dim);
+  padding: 14px 32px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  border-radius: 3px;
+  text-decoration: none;
+  transition: border-color 0.2s, color 0.2s;
+}
+.btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+.hero-stats {
+  position: absolute;
+  bottom: 60px;
+  right: 80px;
+  display: flex;
+  gap: 48px;
+  opacity: 0;
+  animation: fadeUp 1s 0.9s forwards;
+}
+.stat { text-align: right; }
+.stat-num {
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--white);
+  line-height: 1;
+}
+.stat-label {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+@keyframes fadeUp {
+  from { opacity:0; transform: translateY(24px); }
+  to   { opacity:1; transform: translateY(0); }
+}
+
+/* ── Section Base ──────────────────────────────────────────────── */
+section {
+  padding: 100px 80px;
+  border-top: 1px solid var(--border);
+}
+.section-label {
+  font-size: 10px;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-label::after {
+  content: '';
+  flex: 1;
+  max-width: 40px;
+  height: 1px;
+  background: var(--accent);
+  opacity: 0.4;
+}
+.section-title {
+  font-family: var(--font-display);
+  font-size: clamp(32px, 4vw, 54px);
+  font-weight: 800;
+  color: var(--white);
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  margin-bottom: 20px;
+}
+.section-desc {
+  color: var(--muted);
+  max-width: 560px;
+  line-height: 1.7;
+  font-size: 14px;
+  margin-bottom: 60px;
+}
+
+/* ── Feature Grid ──────────────────────────────────────────────── */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+}
+
+.feature-card {
+  background: var(--panel);
+  padding: 36px 32px;
+  position: relative;
+  overflow: hidden;
+  transition: background 0.3s;
+}
+.feature-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.4s;
+}
+.feature-card:hover::before { transform: scaleX(1); }
+.feature-card:hover { background: #0d1420; }
+
+.feature-icon {
+  width: 44px; height: 44px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--dim);
+  border-radius: 8px;
+  font-size: 20px;
+}
+
+.feature-name {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: 10px;
+}
+.feature-desc { color: var(--muted); font-size: 13px; line-height: 1.65; }
+
+/* ── Code Blocks ───────────────────────────────────────────────── */
+.code-section {
+  background: var(--void);
+}
+.code-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--border);
+}
+.code-tab {
+  padding: 12px 24px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  user-select: none;
+}
+.code-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.code-tab:hover:not(.active) { color: var(--text); }
+
+.code-panels { position: relative; }
+.code-panel {
+  display: none;
+  padding: 32px 36px;
+  overflow-x: auto;
+}
+.code-panel.active { display: block; }
+.code-panel pre {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--text);
+  white-space: pre;
+}
+
+/* Syntax highlighting */
+.kw  { color: #7b61ff; }
+.str { color: #00e5ff; }
+.cm  { color: #3d5070; font-style: italic; }
+.fn  { color: #00ff88; }
+.num { color: #ff6b35; }
+.prop{ color: #c8d4e8; }
+.op  { color: #4a5a78; }
+
+/* ── Pipeline diagram ─────────────────────────────────────────── */
+.pipeline-section { overflow: hidden; }
+.pipeline-track {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow-x: auto;
+  padding: 40px 0;
+  scrollbar-width: none;
+}
+.pipeline-track::-webkit-scrollbar { display: none; }
+.pipeline-node {
+  flex-shrink: 0;
+  background: var(--panel);
+  border: 1px solid var(--dim);
+  border-radius: 6px;
+  padding: 16px 20px;
+  min-width: 130px;
+  text-align: center;
+  position: relative;
+  transition: border-color 0.3s, box-shadow 0.3s;
+  cursor: default;
+}
+.pipeline-node:hover {
+  border-color: var(--accent);
+  box-shadow: var(--glow);
+}
+.pipeline-node-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.pipeline-node-name {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--white);
+}
+.pipeline-node.optional .pipeline-node-name { color: var(--accent2); }
+.pipeline-node.post .pipeline-node-name { color: var(--accent); }
+
+.pipeline-arrow {
+  flex-shrink: 0;
+  width: 32px;
+  text-align: center;
+  color: var(--dim);
+  font-size: 16px;
+}
+
+/* ── Quality table ───────────────────────────────────────────── */
+.quality-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.quality-table th {
+  text-align: left;
+  padding: 12px 20px;
+  background: var(--void);
+  color: var(--accent);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+.quality-table td {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.quality-table tr:hover td { background: rgba(0,229,255,0.03); }
+.q-ultra { color: #7b61ff; }
+.q-high  { color: #00e5ff; }
+.q-med   { color: #00ff88; }
+.q-low   { color: var(--muted); }
+.q-off   { color: #2a3348; }
+
+/* ── Performance monitor widget ─────────────────────────────── */
+#perf-demo {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 240px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.perf-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+}
+.perf-key { color: var(--muted); }
+.perf-val { color: var(--green); }
+.perf-bar-wrap {
+  height: 3px;
+  background: var(--dim);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.perf-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+/* ── Addon cards ─────────────────────────────────────────────── */
+.addon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+.addon-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 24px;
+  transition: border-color 0.2s, transform 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.addon-card:hover { border-color: var(--accent2); transform: translateY(-3px); }
+.addon-badge {
+  display: inline-block;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 2px;
+  margin-bottom: 12px;
+  background: rgba(123,97,255,0.15);
+  color: var(--accent2);
+  border: 1px solid rgba(123,97,255,0.3);
+}
+.addon-name {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: 8px;
+}
+.addon-desc { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.addon-size {
+  position: absolute;
+  top: 16px; right: 16px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* ── Install section ─────────────────────────────────────────── */
+.install-box {
+  background: var(--void);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 20px 28px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--green);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  user-select: all;
+  max-width: 480px;
+  margin-bottom: 16px;
+}
+.install-box:hover { border-color: var(--green); }
+.install-box .prompt { color: var(--muted); margin-right: 4px; }
+
+/* ── Footer ──────────────────────────────────────────────────── */
+footer {
+  padding: 60px 80px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+.footer-logo {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 20px;
+  color: var(--white);
+}
+.footer-copy {
+  color: var(--muted);
+  font-size: 11px;
+}
+.footer-links {
+  display: flex;
+  gap: 24px;
+}
+.footer-links a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 12px;
+  transition: color 0.2s;
+}
+.footer-links a:hover { color: var(--accent); }
+
+/* ── Crosshair cursor ────────────────────────────────────────── */
+a, button, [role=button], .code-tab, .addon-card, .install-box {
+  cursor: pointer;
+}
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  nav { padding: 0 24px; }
+  nav .nav-links { display: none; }
+  #hero { padding: 100px 24px 60px; }
+  section { padding: 60px 24px; }
+  .hero-stats { display: none; }
+  footer { flex-direction: column; align-items: flex-start; padding: 40px 24px; }
+}
+</style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+
+<!-- NAV -->
+<nav class="layer">
+  <div class="nav-logo">
+    <div class="nav-logo-dot"></div>
+    StyleShade
+  </div>
+  <ul class="nav-links">
+    <li><a href="#features">Features</a></li>
+    <li><a href="#pipeline">Pipeline</a></li>
+    <li><a href="#api">API</a></li>
+    <li><a href="#addons">Add-ons</a></li>
+    <li><a href="#install" class="nav-cta">Get Started</a></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<section id="hero" class="layer">
+  <div class="hero-eyebrow">v1.0.0 — WebGPU-first shader system</div>
+  <h1 class="hero-title">
+    AAA visuals.<br>
+    <span class="accent-word">Web speed.</span>
+  </h1>
+  <p class="hero-subtitle">
+    Vulkan-inspired render graph. Explicit pipelines. Auto-scaling quality. 
+    Works with Three.js, Babylon.js, or raw WebGPU. Zero FPS tax.
+  </p>
+  <div class="hero-actions">
+    <a href="#install" class="btn-primary">
+      <span>↓</span> Install
+    </a>
+    <a href="#api" class="btn-secondary">View Docs</a>
+    <a href="https://github.com/styleshade/styleshade" class="btn-secondary" target="_blank">GitHub ↗</a>
+  </div>
+  <div class="hero-stats">
+    <div class="stat">
+      <div class="stat-num" id="counter-fps">60</div>
+      <div class="stat-label">Target FPS</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">7</div>
+      <div class="stat-label">Render Passes</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">∞</div>
+      <div class="stat-label">Scale</div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section id="features" class="layer">
+  <div class="section-label">Core System</div>
+  <h2 class="section-title">Built different.</h2>
+  <p class="section-desc">Every subsystem engineered for real-world web performance — not synthetic benchmarks. The render graph compiles once, runs forever.</p>
+
+  <div class="feature-grid">
+    <div class="feature-card">
+      <div class="feature-icon">⚡</div>
+      <div class="feature-name">WebGPU-First</div>
+      <div class="feature-desc">Explicit command buffers, compute shaders, indirect draw calls, and GPU-driven culling. Falls back to WebGL2 automatically.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔺</div>
+      <div class="feature-name">Render Graph</div>
+      <div class="feature-desc">Vulkan-style DAG with automatic resource barriers, transient texture aliasing, and topological pass ordering. No manual sync.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">💎</div>
+      <div class="feature-name">Cook-Torrance PBR</div>
+      <div class="feature-desc">Full GGX microfacet BRDF with Fresnel-Schlick, Smith geometry, and energy conservation. Works in WGSL and GLSL.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🎚️</div>
+      <div class="feature-name">Auto Quality Scaling</div>
+      <div class="feature-desc">EMA frame-time monitor with hysteresis-controlled tier transitions. Degrades before drops, upgrades after stability.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔌</div>
+      <div class="feature-name">Adapter Pattern</div>
+      <div class="feature-desc">Drop into Three.js via onBeforeCompile injection. Babylon.js via post-process pipeline. Raw WebGPU via manual frame control.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🧩</div>
+      <div class="feature-name">Chunk-Based Shaders</div>
+      <div class="feature-desc">Modular WGSL/GLSL chunk system with define-driven dead code elimination. Zero runtime branching in compiled pipelines.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🌊</div>
+      <div class="feature-name">Forward+ Lighting</div>
+      <div class="feature-desc">Tile-based light culling with a GPU-side light grid. Handles thousands of dynamic lights without batching limits.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔄</div>
+      <div class="feature-name">Hot Reload</div>
+      <div class="feature-desc">Shader cache invalidation on change. Rebuild render passes without page refresh. Vite/Webpack HMR compatible.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📊</div>
+      <div class="feature-name">Debug Overlay</div>
+      <div class="feature-desc">Real-time FPS, GPU frame cost, draw call count, tier indicator, and pass visualization. One flag to enable.</div>
+    </div>
+  </div>
+</section>
+
+<!-- PIPELINE -->
+<section id="pipeline" class="pipeline-section layer">
+  <div class="section-label">Architecture</div>
+  <h2 class="section-title">Explicit render graph.</h2>
+  <p class="section-desc">Every frame is a compiled DAG. Dependencies resolve automatically. Transient resources are aliased to minimize VRAM.</p>
+
+  <div class="pipeline-track" id="pipeline-track">
+    <!-- Filled by JS -->
+  </div>
+
+  <br><br>
+  <h3 style="font-family:var(--font-display);color:var(--white);font-size:22px;margin-bottom:32px;">Quality Tiers</h3>
+  <table class="quality-table">
+    <thead>
+      <tr>
+        <th>Feature</th>
+        <th class="q-ultra">Ultra</th>
+        <th class="q-high">High</th>
+        <th class="q-med">Medium</th>
+        <th class="q-low">Low</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>SSAO Samples</td><td class="q-ultra">16</td><td class="q-high">8</td><td class="q-med">4</td><td class="q-off">—</td></tr>
+      <tr><td>Shadow Mode</td><td class="q-ultra">PCSS</td><td class="q-high">PCF</td><td class="q-med">Basic</td><td class="q-off">—</td></tr>
+      <tr><td>Shadow Map</td><td class="q-ultra">4096²</td><td class="q-high">2048²</td><td class="q-med">1024²</td><td class="q-low">512²</td></tr>
+      <tr><td>Bloom Res</td><td class="q-ultra">100%</td><td class="q-high">75%</td><td class="q-med">50%</td><td class="q-low">25%</td></tr>
+      <tr><td>Volumetrics</td><td class="q-ultra">High</td><td class="q-high">Low Res</td><td class="q-med">Low Res</td><td class="q-off">—</td></tr>
+      <tr><td>Reflections</td><td class="q-ultra">SSR</td><td class="q-high">SSR</td><td class="q-med">Cubemap</td><td class="q-off">—</td></tr>
+      <tr><td>LOD Bias</td><td class="q-ultra">0.0</td><td class="q-high">0.5</td><td class="q-med">1.0</td><td class="q-low">2.0</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- API -->
+<section id="api" class="code-section layer">
+  <div class="section-label">Integration</div>
+  <h2 class="section-title">Any engine. Any level.</h2>
+  <p class="section-desc">Five lines for auto mode. Full pipeline control for experts. The same library scales to both.</p>
+
+  <div class="code-tabs">
+    <div class="code-tab active" data-panel="auto">Auto / Beginner</div>
+    <div class="code-tab" data-panel="advanced">Advanced</div>
+    <div class="code-tab" data-panel="three">Three.js</div>
+    <div class="code-tab" data-panel="babylon">Babylon.js</div>
+    <div class="code-tab" data-panel="raw">Raw WebGPU</div>
+    <div class="code-tab" data-panel="shader">Custom Shader</div>
+  </div>
+
+  <div class="code-panels" style="background:var(--panel);border:1px solid var(--border);border-top:none;">
+
+    <div class="code-panel active" id="panel-auto"><pre><span class="cm">// ── Auto mode: detects hardware, selects preset, manages quality</span>
+<span class="kw">import</span> { <span class="prop">StyleShade</span> } <span class="kw">from</span> <span class="str">'styleshade'</span>;
+
+<span class="kw">await</span> <span class="prop">StyleShade</span>.<span class="fn">init</span>({
+  mode:    <span class="str">'auto'</span>,
+  quality: <span class="str">'auto'</span>,     <span class="cm">// ultra | high | medium | low | auto</span>
+  preset:  <span class="str">'cinematic'</span>, <span class="cm">// cinematic | realistic | stylized | performance</span>
+});
+
+<span class="cm">// Attach to an existing Three.js setup</span>
+<span class="kw">await</span> <span class="prop">StyleShade</span>.<span class="fn">attach</span>({ engine: <span class="str">'three'</span>, scene, renderer, camera });
+
+<span class="cm">// Done. StyleShade manages everything from here.</span></pre></div>
+
+    <div class="code-panel" id="panel-advanced"><pre><span class="cm">// ── Advanced mode: explicit feature + pipeline control</span>
+<span class="kw">import</span> { <span class="prop">StyleShade</span> } <span class="kw">from</span> <span class="str">'styleshade'</span>;
+
+<span class="kw">await</span> <span class="prop">StyleShade</span>.<span class="fn">init</span>({
+  mode:     <span class="str">'advanced'</span>,
+  renderer: <span class="str">'webgpu'</span>,
+  features: {
+    lighting:    <span class="str">'forward+'</span>,  <span class="cm">// forward+ | clustered</span>
+    shadows:     <span class="str">'pcss'</span>,      <span class="cm">// none | basic | pcf | pcss</span>
+    ssao:        <span class="str">true</span>,
+    bloom:       { threshold: <span class="num">0.8</span>, strength: <span class="num">1.2</span>, radius: <span class="num">0.4</span> },
+    volumetric:  <span class="str">true</span>,
+    reflections: <span class="str">'ssr'</span>,
+    toneMapping: <span class="str">'aces'</span>,
+    dof:         <span class="str">true</span>,
+    motionBlur:  <span class="str">true</span>,
+  },
+  performance: {
+    targetFPS:     <span class="num">60</span>,
+    gpuBudgetMS:   <span class="num">12</span>,
+    stabilityBias: <span class="num">0.8</span>,
+  },
+  debug: { overlay: <span class="str">true</span>, hotReload: <span class="str">true</span> },
+});</pre></div>
+
+    <div class="code-panel" id="panel-three"><pre><span class="cm">// ── Three.js integration</span>
+<span class="kw">import</span> * <span class="kw">as</span> <span class="prop">THREE</span> <span class="kw">from</span> <span class="str">'three'</span>;
+<span class="kw">import</span> { <span class="prop">StyleShade</span> } <span class="kw">from</span> <span class="str">'styleshade'</span>;
+
+<span class="kw">const</span> renderer = <span class="kw">new</span> <span class="prop">THREE</span>.<span class="fn">WebGLRenderer</span>({ antialias: <span class="str">false</span> });
+<span class="kw">const</span> scene    = <span class="kw">new</span> <span class="prop">THREE</span>.<span class="fn">Scene</span>();
+<span class="kw">const</span> camera   = <span class="kw">new</span> <span class="prop">THREE</span>.<span class="fn">PerspectiveCamera</span>(<span class="num">70</span>, innerWidth/innerHeight, <span class="num">0.1</span>, <span class="num">1000</span>);
+
+<span class="cm">// StyleShade patches renderer.render() and injects into materials</span>
+<span class="kw">await</span> <span class="prop">StyleShade</span>.<span class="fn">attach</span>({ engine: <span class="str">'three'</span>, scene, renderer, camera });
+
+<span class="cm">// Create an enhanced PBR material</span>
+<span class="kw">const</span> mat = <span class="prop">StyleShade</span>.<span class="fn">createMaterial</span>({
+  lighting:  <span class="str">'pbr'</span>,
+  shadows:   <span class="str">'pcss'</span>,
+  ao:        <span class="str">'ssao'</span>,
+  metallic:  <span class="num">0.9</span>,
+  roughness: <span class="num">0.2</span>,
+});
+
+<span class="cm">// Normal Three.js render loop — StyleShade hooks in automatically</span>
+renderer.<span class="fn">setAnimationLoop</span>(() => renderer.<span class="fn">render</span>(scene, camera));</pre></div>
+
+    <div class="code-panel" id="panel-babylon"><pre><span class="cm">// ── Babylon.js integration</span>
+<span class="kw">import</span> { <span class="prop">Engine</span>, <span class="prop">Scene</span> } <span class="kw">from</span> <span class="str">'@babylonjs/core'</span>;
+<span class="kw">import</span> { <span class="prop">StyleShade</span> } <span class="kw">from</span> <span class="str">'styleshade'</span>;
+
+<span class="kw">const</span> engine = <span class="kw">new</span> <span class="prop">Engine</span>(canvas, <span class="str">true</span>);
+<span class="kw">const</span> scene  = <span class="kw">new</span> <span class="prop">Scene</span>(engine);
+
+<span class="cm">// Pass engine as renderer for Babylon</span>
+<span class="kw">await</span> <span class="prop">StyleShade</span>.<span class="fn">attach</span>({
+  engine:   <span class="str">'babylon'</span>,
+  renderer: engine,
+  scene,
+  camera,
+});
+
+engine.<span class="fn">runRenderLoop</span>(() => scene.<span class="fn">render</span>());</pre></div>
+
+    <div class="code-panel" id="panel-raw"><pre><span class="cm">// ── Raw WebGPU — full manual control</span>
+<span class="kw">import</span> { <span class="prop">StyleShade</span> } <span class="kw">from</span> <span class="str">'styleshade'</span>;
+
+<span class="kw">await</span> <span class="prop">StyleShade</span>.<span class="fn">init</span>({ renderer: <span class="str">'webgpu'</span>, mode: <span class="str">'advanced'</span> });
+<span class="kw">await</span> <span class="prop">StyleShade</span>.<span class="fn">attach</span>({ canvas: document.<span class="fn">getElementById</span>(<span class="str">'c'</span>) });
+
+<span class="cm">// Your own scene/camera objects</span>
+<span class="kw">function</span> <span class="fn">frame</span>() {
+  <span class="cm">// StyleShade drives the full render graph</span>
+  <span class="prop">StyleShade</span>._adapter.<span class="fn">renderFrame</span>(myScene, myCamera);
+  requestAnimationFrame(<span class="fn">frame</span>);
+}
+<span class="fn">frame</span>();
+
+<span class="cm">// Real-time metrics</span>
+<span class="kw">const</span> metrics = <span class="prop">StyleShade</span>.<span class="fn">getMetrics</span>();
+<span class="cm">// → { fps, frameTimeMS, gpuTimeMS, drawCalls, tier }</span></pre></div>
+
+    <div class="code-panel" id="panel-shader"><pre><span class="cm">// ── Custom shader injection</span>
+<span class="kw">import</span> { <span class="prop">StyleShade</span> } <span class="kw">from</span> <span class="str">'styleshade'</span>;
+
+<span class="cm">// Inject GLSL into all fragment shaders</span>
+<span class="prop">StyleShade</span>.<span class="fn">extendShader</span>({
+  fragment: <span class="str">`
+    // Chromatic tint based on depth
+    float depth = texture2D(ss_depth, vUv).r;
+    color.rgb *= mix(vec3(1.0, 0.95, 0.9), vec3(0.9, 0.95, 1.0), depth);
+  `</span>,
+});
+
+<span class="cm">// Load addons lazily — only what you need</span>
+<span class="kw">const</span> vol = <span class="kw">await</span> <span class="prop">StyleShade</span>.<span class="fn">loadAddon</span>(<span class="str">'volumetrics'</span>, { density: <span class="num">0.04</span> });
+<span class="kw">const</span> ssr = <span class="kw">await</span> <span class="prop">StyleShade</span>.<span class="fn">loadAddon</span>(<span class="str">'ssr-reflections'</span>);
+
+<span class="cm">// Switch quality presets at runtime</span>
+<span class="prop">StyleShade</span>.<span class="fn">applyPreset</span>(<span class="str">'performance'</span>); <span class="cm">// instant</span>
+<span class="prop">StyleShade</span>.<span class="fn">setQuality</span>(<span class="str">'ultra'</span>);       <span class="cm">// override auto</span>
+
+<span class="cm">// React to auto tier changes</span>
+<span class="prop">StyleShade</span>.<span class="fn">on</span>(<span class="str">'tier:change'</span>, tier => console.<span class="fn">log</span>(<span class="str">'Quality scaled to:'</span>, tier));</pre></div>
+
+  </div>
+</section>
+
+<!-- ADDONS -->
+<section id="addons" class="layer">
+  <div class="section-label">Ecosystem</div>
+  <h2 class="section-title">Opt-in addons.</h2>
+  <p class="section-desc">Heavy effects live outside the core bundle. Load only what your scene needs. Each addon tree-shakes independently.</p>
+
+  <div class="addon-grid">
+    <div class="addon-card">
+      <div class="addon-size">~18kb</div>
+      <div class="addon-badge">Visual</div>
+      <div class="addon-name">Volumetrics</div>
+      <div class="addon-desc">Froxel-based volumetric fog with dynamic light scattering and god ray support.</div>
+    </div>
+    <div class="addon-card">
+      <div class="addon-size">~22kb</div>
+      <div class="addon-badge">Reflection</div>
+      <div class="addon-name">SSR Reflections</div>
+      <div class="addon-desc">Hierarchical Z screen-space reflections with temporal accumulation and edge fade.</div>
+    </div>
+    <div class="addon-card">
+      <div class="addon-size">~6kb</div>
+      <div class="addon-badge">Post</div>
+      <div class="addon-name">Lens Flare</div>
+      <div class="addon-desc">Procedural anamorphic & spherical lens flares with occlusion queries.</div>
+    </div>
+    <div class="addon-card">
+      <div class="addon-size">~9kb</div>
+      <div class="addon-badge">Stylized</div>
+      <div class="addon-name">Outlines</div>
+      <div class="addon-desc">Jump Flood Algorithm outlines with configurable thickness, color, and depth rejection.</div>
+    </div>
+    <div class="addon-card">
+      <div class="addon-size">~11kb</div>
+      <div class="addon-badge">Motion</div>
+      <div class="addon-name">Motion Blur</div>
+      <div class="addon-desc">Per-object velocity buffer motion blur with tile-max optimization.</div>
+    </div>
+    <div class="addon-card">
+      <div class="addon-size">~14kb</div>
+      <div class="addon-badge">Atmosphere</div>
+      <div class="addon-name">God Rays</div>
+      <div class="addon-desc">Radial light shaft accumulation with occlusion mask and noise dithering.</div>
+    </div>
+    <div class="addon-card">
+      <div class="addon-size">~4kb</div>
+      <div class="addon-badge">Post</div>
+      <div class="addon-name">Chromatic Ab.</div>
+      <div class="addon-desc">RGB channel split with radial distortion falloff and configurable strength curve.</div>
+    </div>
+    <div class="addon-card" style="border-style:dashed;opacity:0.5;">
+      <div class="addon-badge">Coming Soon</div>
+      <div class="addon-name">Path Tracing</div>
+      <div class="addon-desc">Experimental WebGPU compute-based path tracer for offline-quality previews.</div>
+    </div>
+  </div>
+</section>
+
+<!-- SANDBOX TEASER -->
+<section id="sandbox-teaser" class="layer" style="background:var(--void);">
+  <div class="section-label">Interactive Demo</div>
+  <h2 class="section-title">Edit shaders live.</h2>
+  <p class="section-desc">A full 3D scene running in your browser. Edit GLSL fragment & vertex shaders in real-time, tweak PBR controls, switch presets, and watch the render graph update instantly.</p>
+
+  <a href="sandbox.html" style="display:block;position:relative;border:1px solid var(--border);border-radius:8px;overflow:hidden;max-width:860px;text-decoration:none;transition:border-color 0.3s,box-shadow 0.3s;" onmouseover="this.style.borderColor='var(--accent)';this.style.boxShadow='0 0 60px rgba(0,229,255,0.12)'" onmouseout="this.style.borderColor='var(--border)';this.style.boxShadow='none'">
+    <!-- Mock sandbox preview -->
+    <div style="background:#020408;height:340px;display:grid;grid-template-columns:1fr 320px;">
+      <!-- viewport mock -->
+      <div style="position:relative;overflow:hidden;">
+        <canvas id="preview-canvas" style="width:100%;height:100%;display:block;"></canvas>
+        <div style="position:absolute;bottom:14px;left:14px;display:flex;gap:6px;">
+          <div style="padding:4px 10px;background:rgba(0,229,255,0.12);border:1px solid var(--accent);border-radius:3px;font-family:var(--font-mono);font-size:9px;color:var(--accent);">Bloom</div>
+          <div style="padding:4px 10px;background:rgba(0,0,0,0.6);border:1px solid var(--dim);border-radius:3px;font-family:var(--font-mono);font-size:9px;color:var(--muted);">Fog</div>
+          <div style="padding:4px 10px;background:rgba(0,229,255,0.12);border:1px solid var(--accent);border-radius:3px;font-family:var(--font-mono);font-size:9px;color:var(--accent);">Rotate</div>
+        </div>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;">
+          <div style="background:rgba(0,229,255,0.1);border:1px solid rgba(0,229,255,0.4);border-radius:50%;width:64px;height:64px;display:flex;align-items:center;justify-content:center;font-size:22px;backdrop-filter:blur(4px);">▶</div>
+        </div>
+      </div>
+      <!-- sidebar mock -->
+      <div style="border-left:1px solid var(--border);background:var(--panel);display:flex;flex-direction:column;">
+        <div style="display:flex;border-bottom:1px solid var(--border);">
+          <div style="flex:1;padding:10px;font-family:var(--font-ui);font-size:9px;text-align:center;color:var(--accent);border-bottom:2px solid var(--accent);">Shader</div>
+          <div style="flex:1;padding:10px;font-family:var(--font-ui);font-size:9px;text-align:center;color:var(--muted);">Controls</div>
+          <div style="flex:1;padding:10px;font-family:var(--font-ui);font-size:9px;text-align:center;color:var(--muted);">Stats</div>
+        </div>
+        <div style="flex:1;padding:12px;font-family:var(--font-mono);font-size:10px;line-height:1.7;overflow:hidden;">
+          <span style="color:#7b61ff">void</span> <span style="color:#00ff88">main</span>() {<br>
+          &nbsp;&nbsp;<span style="color:#4a5a78">// Cook-Torrance PBR</span><br>
+          &nbsp;&nbsp;<span style="color:#7b61ff">vec3</span> N = <span style="color:#00ff88">normalize</span>(vNormal);<br>
+          &nbsp;&nbsp;<span style="color:#7b61ff">vec3</span> V = <span style="color:#00ff88">normalize</span>(vViewDir);<br>
+          &nbsp;&nbsp;<span style="color:#7b61ff">float</span> fresnel = <span style="color:#00ff88">pow</span>(<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#ff6b35">1.0</span> - <span style="color:#00ff88">dot</span>(N,V), <span style="color:#ff6b35">5.0</span>);<br>
+          &nbsp;&nbsp;<span style="color:#4a5a78">// ... edit live →</span><br>
+        </div>
+        <div style="padding:10px 12px;border-top:1px solid var(--border);">
+          <div style="background:var(--accent);color:var(--black);padding:8px;border-radius:3px;font-family:var(--font-ui);font-size:10px;font-weight:700;text-align:center;letter-spacing:0.1em;">▶ APPLY SHADER</div>
+        </div>
+      </div>
+    </div>
+  </a>
+
+  <div style="margin-top:20px;display:flex;gap:16px;flex-wrap:wrap;">
+    <a href="sandbox.html" class="btn-primary">Open Full Sandbox ↗</a>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <span style="font-size:11px;color:var(--muted);">6 presets:</span>
+      <span style="font-size:11px;color:var(--accent);">Cinematic</span>
+      <span style="font-size:11px;color:var(--muted);">·</span>
+      <span style="font-size:11px;color:var(--accent2);">Neon Void</span>
+      <span style="font-size:11px;color:var(--muted);">·</span>
+      <span style="font-size:11px;color:var(--green);">Alien World</span>
+      <span style="font-size:11px;color:var(--muted);">·</span>
+      <span style="font-size:11px;color:var(--accent);">Wireframe</span>
+      <span style="font-size:11px;color:var(--muted);">·</span>
+      <span style="font-size:11px;color:var(--accent2);">X-Ray</span>
+      <span style="font-size:11px;color:var(--muted);">·</span>
+      <span style="font-size:11px;color:var(--accent3);">Hologram</span>
+    </div>
+  </div>
+</section>
+
+<!-- INSTALL -->
+<section id="install" class="layer">
+  <div class="section-label">Get Started</div>
+  <h2 class="section-title">Ship faster.</h2>
+  <p class="section-desc">One package. Three engines. Unlimited scale. MIT licensed.</p>
+
+  <div class="install-box" onclick="navigator.clipboard.writeText('npm install styleshade')">
+    <span class="prompt">$</span> npm install styleshade
+  </div>
+  <div class="install-box" onclick="navigator.clipboard.writeText('yarn add styleshade')">
+    <span class="prompt">$</span> yarn add styleshade
+  </div>
+  <p style="color:var(--muted);font-size:12px;margin-top:8px;">Or use the CDN: <span style="color:var(--accent)">https://cdn.jsdelivr.net/npm/styleshade/dist/styleshade.esm.js</span></p>
+
+  <br><br>
+
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:32px;max-width:520px;">
+    <div id="perf-demo">
+      <div style="color:var(--white);font-family:var(--font-display);font-size:14px;font-weight:700;margin-bottom:8px;">StyleShade Debug</div>
+      <div style="height:1px;background:var(--border);margin-bottom:8px;"></div>
+      <div class="perf-row"><span class="perf-key">FPS</span><span class="perf-val" id="d-fps">60</span></div>
+      <div class="perf-bar-wrap"><div class="perf-bar" id="bar-fps" style="width:100%"></div></div>
+      <div class="perf-row"><span class="perf-key">Frame</span><span class="perf-val" id="d-frame">16.2 ms</span></div>
+      <div class="perf-bar-wrap"><div class="perf-bar" id="bar-frame" style="width:60%;background:linear-gradient(90deg,var(--green),var(--accent))"></div></div>
+      <div class="perf-row"><span class="perf-key">GPU</span><span class="perf-val" id="d-gpu">9.1 ms</span></div>
+      <div class="perf-bar-wrap"><div class="perf-bar" id="bar-gpu" style="width:45%;background:linear-gradient(90deg,var(--accent2),var(--accent))"></div></div>
+      <div class="perf-row"><span class="perf-key">Draw Calls</span><span class="perf-val" id="d-dc">1,284</span></div>
+      <div class="perf-row"><span class="perf-key">Triangles</span><span class="perf-val" id="d-tris">2.4M</span></div>
+      <div class="perf-row"><span class="perf-key">Tier</span><span class="perf-val" id="d-tier">HIGH</span></div>
+    </div>
+    <p style="color:var(--muted);font-size:11px;margin-top:16px;">Simulated debug overlay. Enable with <code style="color:var(--accent)">debug: { overlay: true }</code></p>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="layer">
+  <div>
+    <div class="footer-logo">StyleShade</div>
+    <div class="footer-copy">MIT License · WebGPU · WebGL2 · Three.js · Babylon.js</div>
+  </div>
+  <div class="footer-links">
+    <a href="https://github.com/styleshade/styleshade" target="_blank">GitHub</a>
+    <a href="#">npm</a>
+    <a href="#">Changelog</a>
+    <a href="#">Discord</a>
+  </div>
+</footer>
+
+<script>
+// ── Animated GPU background ─────────────────────────────────────────────────
+const canvas = document.getElementById('bg-canvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Particles
+const PTS = 80;
+const pts = Array.from({length: PTS}, () => ({
+  x: Math.random() * 2000 - 1000,
+  y: Math.random() * 2000 - 1000,
+  z: Math.random() * 1500 + 200,
+  vz: Math.random() * 0.8 + 0.3,
+  size: Math.random() * 2 + 0.5,
+}));
+
+// Grid lines
+const GRID = 20;
+let t = 0;
+
+function drawBg() {
+  ctx.clearRect(0, 0, W, H);
+  t += 0.005;
+
+  // Subtle radial gradient
+  const grd = ctx.createRadialGradient(W*0.5, H*0.4, 0, W*0.5, H*0.4, W*0.8);
+  grd.addColorStop(0, 'rgba(0,60,100,0.12)');
+  grd.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, W, H);
+
+  // Starfield
+  ctx.save();
+  ctx.translate(W / 2, H / 2);
+  for (const p of pts) {
+    p.z -= p.vz;
+    if (p.z < 1) { p.z = 1500; p.x = Math.random()*2000-1000; p.y = Math.random()*2000-1000; }
+    const sx = (p.x / p.z) * 500;
+    const sy = (p.y / p.z) * 500;
+    const r  = Math.max(0.3, p.size * (1 - p.z / 1500));
+    const a  = 1 - p.z / 1500;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI*2);
+    ctx.fillStyle = `rgba(180,220,255,${a * 0.7})`;
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Perspective grid
+  const cx = W * 0.5, cy = H * 0.6;
+  const horizon = H * 0.45;
+  ctx.save();
+  ctx.globalAlpha = 0.07;
+  ctx.strokeStyle = '#00e5ff';
+  ctx.lineWidth = 0.5;
+
+  const VLINES = 18, HLINES = 10;
+  for (let i = 0; i <= VLINES; i++) {
+    const bx = (i / VLINES) * W;
+    ctx.beginPath();
+    ctx.moveTo(bx, H);
+    ctx.lineTo(cx + (bx - cx) * 0.01, horizon);
+    ctx.stroke();
+  }
+  const speed = (t * 0.08) % (1 / HLINES);
+  for (let i = 0; i <= HLINES; i++) {
+    const p = (i / HLINES + speed) % 1;
+    const y = horizon + (H - horizon) * p;
+    const spread = p;
+    ctx.beginPath();
+    ctx.moveTo(cx - spread * W * 0.5, y);
+    ctx.lineTo(cx + spread * W * 0.5, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  requestAnimationFrame(drawBg);
+}
+drawBg();
+
+// ── Pipeline track ──────────────────────────────────────────────────────────
+const passes = [
+  { label:'Pass 01', name:'Geometry',   type:''},
+  null,
+  { label:'Pass 02', name:'Shadow Map', type:'optional'},
+  null,
+  { label:'Pass 03', name:'SSAO',       type:'optional'},
+  null,
+  { label:'Pass 04', name:'Lighting',   type:''},
+  null,
+  { label:'Pass 05', name:'SSR',        type:'optional'},
+  null,
+  { label:'Pass 06', name:'Volumetric', type:'optional'},
+  null,
+  { label:'Pass 07', name:'Bloom',      type:'post'},
+  null,
+  { label:'Pass 08', name:'Tone Map',   type:'post'},
+  null,
+  { label:'Pass 09', name:'Present',    type:'post'},
+];
+
+const track = document.getElementById('pipeline-track');
+passes.forEach(p => {
+  if (!p) {
+    const arr = document.createElement('div');
+    arr.className = 'pipeline-arrow';
+    arr.textContent = '→';
+    track.appendChild(arr);
+  } else {
+    const node = document.createElement('div');
+    node.className = 'pipeline-node ' + p.type;
+    node.innerHTML = `<div class="pipeline-node-label">${p.label}</div><div class="pipeline-node-name">${p.name}</div>`;
+    track.appendChild(node);
+  }
+});
+
+// ── Code tabs ───────────────────────────────────────────────────────────────
+document.querySelectorAll('.code-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.code-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.code-panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.panel).classList.add('active');
+  });
+});
+
+// ── Animated debug overlay ──────────────────────────────────────────────────
+let fakeTime = 0;
+function animateDebug() {
+  fakeTime += 0.016;
+  const fps   = Math.round(58 + Math.sin(fakeTime * 0.7) * 3);
+  const frame = (1000 / fps).toFixed(1);
+  const gpu   = (parseFloat(frame) * 0.65 + Math.sin(fakeTime * 1.3) * 0.5).toFixed(1);
+  const dc    = Math.round(1250 + Math.sin(fakeTime * 0.4) * 80);
+  const tris  = (2.3 + Math.sin(fakeTime * 0.3) * 0.2).toFixed(1);
+
+  const el = (id) => document.getElementById(id);
+  if (el('d-fps')) {
+    el('d-fps').textContent   = fps;
+    el('d-frame').textContent = `${frame} ms`;
+    el('d-gpu').textContent   = `${gpu} ms`;
+    el('d-dc').textContent    = dc.toLocaleString();
+    el('d-tris').textContent  = `${tris}M`;
+    const health = fps / 60;
+    el('bar-fps').style.width   = (health * 100) + '%';
+    el('bar-frame').style.width = Math.min(100, parseFloat(frame) / 20 * 100) + '%';
+    el('bar-gpu').style.width   = Math.min(100, parseFloat(gpu) / 16 * 100) + '%';
+    el('d-fps').style.color     = health > 0.9 ? '#00ff88' : health > 0.7 ? '#ffcc00' : '#ff4444';
+  }
+  requestAnimationFrame(animateDebug);
+}
+animateDebug();
+
+// ── Scroll reveal ────────────────────────────────────────────────────────────
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.style.opacity = '1';
+      e.target.style.transform = 'translateY(0)';
+    }
+  });
+}, { threshold: 0.1 });
+
+document.querySelectorAll('.feature-card, .addon-card, .pipeline-node').forEach(el => {
+  el.style.opacity = '0';
+  el.style.transform = 'translateY(20px)';
+  el.style.transition = 'opacity 0.5s, transform 0.5s';
+  observer.observe(el);
+});
+</script>
+</body>
+</html>
